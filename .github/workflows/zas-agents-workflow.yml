@@ -1,0 +1,98 @@
+name: ZAS Delegated Agents Workflow
+
+# This workflow is the "GitHub agents workflow" that ZAS delegates work to.
+#
+# It is triggered two ways:
+#   * repository_dispatch (event type "zas-task")  <- how the ZAS broker triggers it
+#         POST /repos/<owner>/<repo>/dispatches
+#         { "event_type": "zas-task", "client_payload": { ...ZAS_TASK_START envelope... } }
+#   * workflow_dispatch                            <- manual trigger for testing from the UI
+#
+# The client_payload IS the ZAS_TASK_START envelope (correlation_id, task_type,
+# task_input, callback_url). It is threaded to every agent via ZAS_TASK_ENVELOPE.
+
+on:
+  repository_dispatch:
+    types: [zas-task]
+  workflow_dispatch:
+    inputs:
+      correlation_id:
+        description: Correlation / ZAS session id
+        required: true
+      task_type:
+        description: Task type to run
+        required: true
+        default: code-remediation
+      summary:
+        description: One-line task summary the agents act on
+        required: false
+        default: Fix the flaky login timeout in the auth service
+      callback_url:
+        description: Broker callback URL (blank = just print the result)
+        required: false
+        default: ""
+
+jobs:
+  run-agents:
+    runs-on: ubuntu-latest
+    env:
+      ZAS_WORK_DIR: ${{ github.workspace }}/.zas_work
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build ZAS task envelope
+        id: envelope
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            # The broker already sent a fully-formed ZAS_TASK_START envelope.
+            ENVELOPE='${{ toJSON(github.event.client_payload) }}'
+          else
+            # Manual run: assemble the envelope from the workflow inputs.
+            ENVELOPE=$(python - <<'PY'
+          import json, os
+          print(json.dumps({
+              "zas_marker": "ZAS_TASK_START",
+              "correlation_id": os.environ["CID"],
+              "task_type": os.environ["TTYPE"],
+              "task_input": {"summary": os.environ["SUMMARY"]},
+              "callback_url": os.environ["CBURL"],
+          }))
+          PY
+          )
+          fi
+          # Stash the envelope for later steps (multiline-safe).
+          {
+            echo 'ZAS_TASK_ENVELOPE<<ZAS_EOF'
+            echo "$ENVELOPE"
+            echo 'ZAS_EOF'
+          } >> "$GITHUB_ENV"
+        env:
+          CID: ${{ github.event.inputs.correlation_id }}
+          TTYPE: ${{ github.event.inputs.task_type }}
+          SUMMARY: ${{ github.event.inputs.summary }}
+          CBURL: ${{ github.event.inputs.callback_url }}
+
+      - name: Agent 1 - Analyze
+        working-directory: agents
+        run: python agent1_analyze.py
+
+      - name: Agent 2 - Generate
+        working-directory: agents
+        run: python agent2_generate.py
+
+      - name: Agent 3 - Review
+        working-directory: agents
+        run: python agent3_review.py
+
+      - name: Callback to ZAS (ZAS_TASK_END)
+        # Always run so ZAS learns about failures too, not just successes.
+        if: always()
+        working-directory: agents
+        run: python post_callback.py

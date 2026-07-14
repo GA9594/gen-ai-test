@@ -1,0 +1,4 @@
+# agent working artifacts created at runtime
+.zas_work/
+__pycache__/
+*.pyc
