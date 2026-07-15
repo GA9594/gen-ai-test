@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "agent_id": "github-remediation-agents-001",
+  "name": "GitHub Code Remediation Agents",
+  "description": "A GitHub Actions workflow of three agents (analyze, generate, review) that ZAS can delegate code-remediation tasks to. ZAS triggers it via repository_dispatch and receives a ZAS-style completion callback.",
+  "provider": {
+    "team": "dev-test",
+    "platform": "github",
+    "repository": "GA9594/gen-ai-test"
+  },
+  "skills": [
+    {
+      "task_type": "code-remediation",
+      "name": "Code Remediation",
+      "description": "Analyze a defect/RCA, generate a patch, and review it, then report back."
+    }
+  ],
+  "dispatch": {
+    "mechanism": "repository_dispatch",
+    "owner": "GA9594",
+    "repo": "gen-ai-test",
+    "event_type": "zas-task",
+    "token_env": "GITHUB_PAT"
+  },
+  "payload_contract": {
+    "correlation_key": "correlation_id",
+    "start_marker": "ZAS_TASK_START",
+    "end_marker": "ZAS_TASK_END",
+    "request_example": {
+      "zas_marker": "ZAS_TASK_START",
+      "correlation_id": "<zas session id>",
+      "task_type": "code-remediation",
+      "task_input": { "summary": "..." },
+      "callback_url": "<broker>/callbacks/complete"
+    },
+    "callback_example": {
+      "zas_marker": "ZAS_TASK_END",
+      "correlation_id": "<zas session id>",
+      "status": "COMPLETED",
+      "result": {}
+    }
+  }
+}
