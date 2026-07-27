@@ -34,7 +34,7 @@ on:
 
 jobs:
   run-agents:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     env:
       ZAS_WORK_DIR: ${{ github.workspace }}/.zas_work
     steps:
