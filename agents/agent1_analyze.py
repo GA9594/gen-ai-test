@@ -21,6 +21,7 @@ TOOL_NAME = "analyze"
 
 def main() -> None:
     task = load_task()
+    print(f"this is the task : {task}")
     session_id = task["correlation_id"]
     task_input = task.get("task_input", {})
 
