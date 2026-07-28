@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "agent_id": "github-math-agents-001",
+  "name": "GitHub Math Agents",
+  "description": "Two chained agents hosted on GitHub Actions: Agent 1 adds two numbers, Agent 2 classifies the result. ZAS triggers this via the broker and receives the result on its callback.",
+  "provider": {
+    "team": "dev-test",
+    "platform": "github",
+    "repository": "GA9594/gen-ai-test"
+  },
+  "skills": [
+    {
+      "task_type": "math-add",
+      "name": "Add and classify two numbers",
+      "description": "Takes num_a and num_b, returns the sum, its square and its parity."
+    }
+  ],
+  "dispatch": {
+    "mechanism": "repository_dispatch",
+    "owner": "GA9594",
+    "repo": "gen-ai-test",
+    "event_type": "zas-math-task",
+    "token_env": "GITHUB_PAT"
+  },
+  "payload_contract": {
+    "correlation_key": "correlation_id",
+    "expected_inputs": ["num_a", "num_b"],
+    "request_example": {
+      "correlation_id": "<zas session id>",
+      "num_a": 7,
+      "num_b": 5,
+      "callback_url": "<broker>/callbacks/complete"
+    },
+    "callback_example": {
+      "correlation_id": "<zas session id>",
+      "status": "COMPLETED",
+      "result": { "sum": 12, "squared": 144, "parity": "even" }
+    }
+  }
+}
