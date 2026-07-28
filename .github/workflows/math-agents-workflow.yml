@@ -1,0 +1,63 @@
+name: ZAS Math Agents
+
+# Triggered by ZAS via the broker:
+#   POST /repos/GA9594/gen-ai-test/dispatches
+#   { "event_type": "zas-math-task", "client_payload": { ... } }
+#
+# The event_type is what picks THIS workflow rather than any other workflow in
+# the repo -- that is how one repo/branch can host several independent agents.
+on:
+  repository_dispatch:
+    types: [zas-math-task]
+  workflow_dispatch:
+    inputs:
+      correlation_id:
+        description: ZAS session / correlation id
+        required: true
+      num_a:
+        description: First number
+        required: true
+        default: "7"
+      num_b:
+        description: Second number
+        required: true
+        default: "5"
+      callback_url:
+        description: Broker callback URL (blank = just print)
+        required: false
+        default: ""
+
+jobs:
+  math-agents:
+    runs-on: self-hosted
+    env:
+      ZAS_WORK_DIR: ${{ github.workspace }}/.zas_work
+      # Read the values straight out of the payload ZAS sent -- no envelope.
+      # `||` falls back to the manual workflow_dispatch inputs.
+      ZAS_CORRELATION_ID: ${{ github.event.client_payload.correlation_id || inputs.correlation_id }}
+      ZAS_NUM_A: ${{ github.event.client_payload.num_a || inputs.num_a }}
+      ZAS_NUM_B: ${{ github.event.client_payload.num_b || inputs.num_b }}
+      ZAS_CALLBACK_URL: ${{ github.event.client_payload.callback_url || inputs.callback_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show what ZAS sent us
+        run: |
+          echo "correlation_id : $ZAS_CORRELATION_ID"
+          echo "num_a          : $ZAS_NUM_A"
+          echo "num_b          : $ZAS_NUM_B"
+          echo "callback_url   : $ZAS_CALLBACK_URL"
+
+      - name: Agent 1 - Add
+        working-directory: new_agents/agents
+        run: python3 agent1_add.py
+
+      - name: Agent 2 - Classify
+        working-directory: new_agents/agents
+        run: python3 agent2_classify.py
+
+      - name: Callback to ZAS
+        if: always()
+        working-directory: new_agents/agents
+        run: python3 post_callback.py
