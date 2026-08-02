@@ -1,14 +1,11 @@
 name: ZAS Math Agents
 
-# Triggered by ZAS via the broker:
-#   POST /repos/GA9594/gen-ai-test/dispatches
-#   { "event_type": "zas-math-task", "client_payload": { ... } }
-#
-# The event_type is what picks THIS workflow rather than any other workflow in
-# the repo -- that is how one repo/branch can host several independent agents.
+# The correlation id goes into the RUN NAME so the adapter can find this run by
+# polling the API -- that is what removes the need for any callback into our
+# network, and therefore the need for a self-hosted runner.
+run-name: ZAS ${{ inputs.correlation_id || github.event.client_payload.correlation_id }}
+
 on:
-  repository_dispatch:
-    types: [zas-math-task]
   workflow_dispatch:
     inputs:
       correlation_id:
@@ -22,22 +19,19 @@ on:
         description: Second number
         required: true
         default: "5"
-      callback_url:
-        description: Broker callback URL (blank = just print)
-        required: false
-        default: ""
+  # Kept so the older callback-style broker still works.
+  repository_dispatch:
+    types: [zas-math-task]
 
 jobs:
   math-agents:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     env:
       ZAS_WORK_DIR: ${{ github.workspace }}/.zas_work
-      # Read the values straight out of the payload ZAS sent -- no envelope.
-      # `||` falls back to the manual workflow_dispatch inputs.
-      ZAS_CORRELATION_ID: ${{ github.event.client_payload.correlation_id || inputs.correlation_id }}
-      ZAS_NUM_A: ${{ github.event.client_payload.num_a || inputs.num_a }}
-      ZAS_NUM_B: ${{ github.event.client_payload.num_b || inputs.num_b }}
-      ZAS_CALLBACK_URL: ${{ github.event.client_payload.callback_url || inputs.callback_url }}
+      ZAS_CORRELATION_ID: ${{ inputs.correlation_id || github.event.client_payload.correlation_id }}
+      ZAS_NUM_A: ${{ inputs.num_a || github.event.client_payload.num_a }}
+      ZAS_NUM_B: ${{ inputs.num_b || github.event.client_payload.num_b }}
+      ZAS_CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,7 +41,6 @@ jobs:
           echo "correlation_id : $ZAS_CORRELATION_ID"
           echo "num_a          : $ZAS_NUM_A"
           echo "num_b          : $ZAS_NUM_B"
-          echo "callback_url   : $ZAS_CALLBACK_URL"
 
       - name: Agent 1 - Add
         working-directory: new_agents/agents
@@ -57,7 +50,18 @@ jobs:
         working-directory: new_agents/agents
         run: python3 agent2_classify.py
 
-      - name: Callback to ZAS
+      # How the result gets back to the adapter: it is uploaded here and the
+      # adapter downloads it over the API. No inbound connection required.
+      - name: Publish result for ZAS
         if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zas-result
+          path: ${{ github.workspace }}/.zas_work/result.json
+          if-no-files-found: warn
+
+      # Optional legacy path -- only fires when a callback_url was supplied.
+      - name: Callback to ZAS (legacy)
+        if: always() && env.ZAS_CALLBACK_URL != ''
         working-directory: new_agents/agents
         run: python3 post_callback.py
